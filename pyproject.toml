@@ -26,9 +26,15 @@ viz = [
 ml = [
   "scikit-learn>=1.2",
 ]
+mcp = [
+  "mcp>=1.0",
+]
 dev = [
   "pytest>=7.0",
 ]
+
+[project.scripts]
+moljam-mcp = "moljam.mcp_server:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
