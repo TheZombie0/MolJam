@@ -16,7 +16,7 @@ The project focuses on one practical question: before a molecular dataset is use
 ## Project Structure
 
 ```text
-MolJam_final/
+MolJam/
 ├── README.md
 └── src/
     └── moljam/
@@ -47,7 +47,7 @@ conda install -c conda-forge rdkit
 Install MolJam in editable mode from the project directory:
 
 ```bash
-cd MolJam_final
+cd MolJam
 pip install -e .
 ```
 
