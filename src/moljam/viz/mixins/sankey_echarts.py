@@ -55,7 +55,7 @@ class SankeyEchartsPlotMixin:
             print(f"Database {db_name} not found in scoring results.")
             return
 
-        snap = self.scoring_results[db_name]['snapshot']
+        scorer = self.scoring_results[db_name]['scorer']
 
         if not PYECHARTS_AVAILABLE:
             print("PyEcharts not available, using matplotlib fallback.")
@@ -63,7 +63,7 @@ class SankeyEchartsPlotMixin:
             return
 
         # Get metric penalties
-        metric_penalties = snap.scores.get('Metric Penalties', {})
+        metric_penalties = scorer.scores.get('Metric Penalties', {})
 
         # Prepare nodes and links
         nodes = []
@@ -73,7 +73,7 @@ class SankeyEchartsPlotMixin:
         category_colors = {
             'Structural Integrity': ['#FF6B6B', '#FF8E8E', '#FFB1B1'],  # Red variants
             'Data Quality': ['#4ECDC4', '#70D7D0'],  # Teal variants
-            'Experimental Information Quality': ['#45B7D1', '#6BC5D8', '#8CD3E5', '#ADE1F2'],  # Blue variants (4 metrics)
+            'Experimental Information Quality': ['#45B7D1', '#6BC5D8', '#8CD3E5'],  # Blue variants (3 metrics)
             'Chemical Space Coverage': ['#96CEB4', '#B8DBB8'],  # Green variants
             'Data Distribution': ['#FECA57', '#FED782']  # Yellow variants
         }
@@ -83,7 +83,7 @@ class SankeyEchartsPlotMixin:
 
             # Add left side category nodes (layer 1)
             for category, metrics in self.categories.items():
-                if category not in snap.scores:
+                if category not in scorer.scores:
                     continue
                 colors = category_colors.get(category, ['#95A5A6'] * 10)
                 nodes.append({
@@ -94,7 +94,7 @@ class SankeyEchartsPlotMixin:
             # Add middle layer metric nodes (layer 2)
             node_mapping = {}
             for category, metrics in self.categories.items():
-                if category not in snap.scores:
+                if category not in scorer.scores:
                     continue
                 colors = category_colors.get(category, ['#95A5A6'] * 10)
 
@@ -120,7 +120,7 @@ class SankeyEchartsPlotMixin:
 
             # Create links: Category -> Metric (layer 1 -> 2)
             for category, metrics in self.categories.items():
-                if category not in snap.scores:
+                if category not in scorer.scores:
                     continue
                 colors = category_colors.get(category, ['#95A5A6'] * 10)
 
@@ -129,7 +129,7 @@ class SankeyEchartsPlotMixin:
                     source_key = f"{category}::{metric}"
 
                     # Calculate total flow for this metric (score + deduction + penalty)
-                    actual_score = snap.scores[category].get(metric, 0)
+                    actual_score = scorer.scores[category].get(metric, 0)
                     if actual_score is None:
                         actual_score = 0
                     score_deduction = 10 - actual_score
@@ -146,7 +146,7 @@ class SankeyEchartsPlotMixin:
 
             # Create links: Metric -> Target (layer 2 -> 3)
             for category, metrics in self.categories.items():
-                if category not in snap.scores:
+                if category not in scorer.scores:
                     continue
                 colors = category_colors.get(category, ['#95A5A6'] * 10)
 
@@ -156,7 +156,7 @@ class SankeyEchartsPlotMixin:
                         continue
 
                     metric_color = colors[metric_idx % len(colors)]
-                    actual_score = snap.scores[category].get(metric, 0)
+                    actual_score = scorer.scores[category].get(metric, 0)
                     if actual_score is None:
                         actual_score = 0
                     score_deduction = 10 - actual_score
@@ -192,7 +192,7 @@ class SankeyEchartsPlotMixin:
 
             # Add left side category nodes with category colors
             for category, metrics in self.categories.items():
-                if category not in snap.scores:
+                if category not in scorer.scores:
                     continue
                 colors = category_colors.get(category, ['#95A5A6'] * 10)
                 # Use the primary color of the category with some transparency
@@ -214,7 +214,7 @@ class SankeyEchartsPlotMixin:
 
             # Create detailed links with metric names in tooltips
             for category, metrics in self.categories.items():
-                if category not in snap.scores:
+                if category not in scorer.scores:
                     continue
 
                 colors = category_colors.get(category, ['#95A5A6'] * 10)
@@ -223,7 +223,7 @@ class SankeyEchartsPlotMixin:
                     source_key = f"{category}::{metric}"
                     metric_color = colors[metric_idx % len(colors)]
 
-                    actual_score = snap.scores[category].get(metric, 0)
+                    actual_score = scorer.scores[category].get(metric, 0)
                     if actual_score is None:
                         actual_score = 0
                     score_deduction = 10 - actual_score
@@ -272,8 +272,8 @@ class SankeyEchartsPlotMixin:
             .set_global_opts(
                 title_opts=opts.TitleOpts(
                     title=f"Score Flow Analysis - {db_name}",
-                    subtitle=f"Normalized: {snap.scores.get('Normalized Score', 0):.1f}/100 | "
-                             f"Final: {snap.scores.get('Final Adjusted Score', 0):.1f}/100",
+                    subtitle=f"Normalized: {scorer.scores.get('Normalized Score', 0):.1f}/100 | "
+                             f"Final: {scorer.scores.get('Final Adjusted Score', 0):.1f}/100",
                     pos_left="center",
                     pos_top="0px" if use_three_layer else "20px"  # More space for 3-layer title
                 ),
@@ -303,4 +303,3 @@ class SankeyEchartsPlotMixin:
                 print(f"    Failed to save PNG: {str(e)}")
         else:
             print("    selenium-snapshot not available, PNG output skipped.")
-

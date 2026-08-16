@@ -11,8 +11,8 @@ class ScaffoldPlotMixin:
             print(f"Database {db_name} not found.")
             return
             
-        snap = self.scoring_results[db_name]['snapshot']
-        diversity_data = snap.analysis_results.get('Chemical Diversity', {})
+        scorer = self.scoring_results[db_name]['scorer']
+        diversity_data = scorer.analysis_results.get('Chemical Diversity', {})
         top_scaffolds = diversity_data.get('Top scaffolds', [])
         
         if not top_scaffolds:

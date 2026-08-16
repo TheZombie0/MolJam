@@ -1,9 +1,4 @@
-import pandas as pd
-from rdkit import Chem
-
-from ..._logging import get_logger
-
-logger = get_logger(__name__)
+from .._common import *
 
 
 class CleaningCoreMixin:
@@ -18,6 +13,7 @@ class CleaningCoreMixin:
         Parameters:
             remove_invalid_smiles: bool - Remove molecules with invalid SMILES
             remove_undefined_stereochemistry: bool - Remove molecules with undefined chirality
+                or undefined double-bond E/Z stereochemistry
             remove_conflicting_labels: bool - Remove molecules with conflicting binary labels
             remove_consistent_duplicates: bool - Remove structural duplicates with consistent activity data
             verbose: bool - Print detailed cleaning information
@@ -30,10 +26,41 @@ class CleaningCoreMixin:
         if 'validate_smiles' not in self.completed_checks:
             self.validate_smiles()
         
-        # Start with original dataframe
+        # Start with original dataframe and attach pipeline outputs for valid rows
         cleaned_df = self.df.copy()
+        internal_row_index_col = '__moljam_parent_pipeline_row_index'
+        cleaned_df[internal_row_index_col] = range(len(cleaned_df))
+        if hasattr(self, 'valid_df') and not self.valid_df.empty:
+            pipeline_cols = [
+                'original_index',
+                'canonical_smiles',
+                'standardized_smiles',
+                'observed_parent_smiles',
+                'parent_smiles',
+                'standardization_comment',
+                'parent_comment',
+                'removed_salts',
+                'removed_solvents',
+                'duplicate_parent_fragments',
+                'parent_fallback',
+            ]
+            pipeline_df = self.valid_df[pipeline_cols].copy()
+            pipeline_df = pipeline_df.rename(columns={'original_index': internal_row_index_col})
+            cleaned_df = cleaned_df.merge(pipeline_df, on=internal_row_index_col, how='left')
         cleaning_report = {}
         indices_to_remove = set()
+        cleaning_group_col = '__moljam_cleaning_group_smiles'
+        valid_group_df = pd.DataFrame()
+        if hasattr(self, 'valid_df') and not self.valid_df.empty:
+            valid_group_df = self.valid_df.copy()
+            valid_group_df[cleaning_group_col] = valid_group_df['parent_smiles']
+            fallback_mask = (
+                valid_group_df[cleaning_group_col].isna()
+                | (valid_group_df[cleaning_group_col] == '')
+            )
+            valid_group_df.loc[fallback_mask, cleaning_group_col] = valid_group_df.loc[
+                fallback_mask, 'canonical_smiles'
+            ]
         
         # 1. Remove invalid SMILES
         if remove_invalid_smiles and hasattr(self, 'invalid_indices'):
@@ -53,28 +80,50 @@ class CleaningCoreMixin:
                 self.check_stereochemistry()
             
             undefined_chirality_indices = []
-            if hasattr(self, 'valid_df') and not self.valid_df.empty:
-                # Re-check chirality for valid molecules
-                for idx, row in self.valid_df.iterrows():
+            undefined_double_bond_indices = []
+            if not valid_group_df.empty:
+                # Re-check stereochemistry for valid molecules on the canonicalized record.
+                for _, row in valid_group_df.iterrows():
                     try:
-                        mol = Chem.MolFromSmiles(row['canonical_smiles'])
-                        if mol:
-                            chiral_centers = Chem.FindMolChiralCenters(mol, includeUnassigned=True)
-                            if any(flag == '?' for _, flag in chiral_centers):
-                                # Get original index from valid_df
-                                original_idx = row['original_index']
-                                undefined_chirality_indices.append(original_idx)
+                        record_smiles = row['canonical_smiles']
+                        if pd.isna(record_smiles) or not record_smiles:
+                            record_smiles = row[self.smiles_col]
+                        detail_smiles = row.get('observed_parent_smiles', record_smiles)
+                        if pd.isna(detail_smiles) or not detail_smiles:
+                            detail_smiles = record_smiles
+
+                        stereo_result = check_mol_chirality(
+                            (int(row['original_index']), record_smiles, detail_smiles)
+                        )
+                        original_idx = int(row['original_index'])
+                        if stereo_result['record_has_undefined_chiral']:
+                            undefined_chirality_indices.append(original_idx)
+                        if stereo_result['record_has_undefined_double_bond']:
+                            undefined_double_bond_indices.append(original_idx)
                     except Exception:
                         pass
-                    
-            if undefined_chirality_indices:
-                indices_to_remove.update(undefined_chirality_indices)
+
+            undefined_stereo_indices = sorted(
+                set(undefined_chirality_indices) | set(undefined_double_bond_indices)
+            )
+            if undefined_stereo_indices:
+                indices_to_remove.update(undefined_stereo_indices)
                 cleaning_report['Undefined Stereochemistry'] = {
-                    'removed_count': len(undefined_chirality_indices),
-                    'removed_indices': undefined_chirality_indices[:10] if len(undefined_chirality_indices) > 10 else undefined_chirality_indices
+                    'undefined_chirality_removed': len(undefined_chirality_indices),
+                    'undefined_double_bond_removed': len(undefined_double_bond_indices),
+                    'removed_count': len(undefined_stereo_indices),
+                    'removed_indices': (
+                        undefined_stereo_indices[:10]
+                        if len(undefined_stereo_indices) > 10
+                        else undefined_stereo_indices
+                    ),
                 }
                 if verbose:
-                    print(f"Removing {len(undefined_chirality_indices)} molecules with undefined stereochemistry")
+                    print(
+                        "Removing "
+                        f"{len(undefined_stereo_indices)} molecules with undefined stereochemistry "
+                        "(chirality or double-bond E/Z)"
+                    )
         
         # 3. Remove molecules with conflicting labels AND duplicate molecules with identical labels
         if remove_conflicting_labels and self.class_cols:
@@ -84,14 +133,14 @@ class CleaningCoreMixin:
             conflicting_label_indices = []
             duplicate_label_indices = []
 
-            if hasattr(self, 'valid_df') and not self.valid_df.empty:
-                grouped = self.valid_df.groupby('canonical_smiles')
+            if not valid_group_df.empty:
+                grouped = valid_group_df.groupby(cleaning_group_col, sort=False)
 
-                for smiles, group in grouped:
+                for _, group in grouped:
                     if len(group) > 1:
                         # Collect all label values for each molecule in group
                         label_tuples = []
-                        for idx, row in group.iterrows():
+                        for _, row in group.iterrows():
                             mol_labels = []
                             for class_col in self.class_cols:
                                 if class_col in group.columns:
@@ -126,6 +175,7 @@ class CleaningCoreMixin:
             # Combined report
             if conflicting_label_indices or duplicate_label_indices:
                 cleaning_report['Label Handling'] = {
+                    'grouping_key': 'parent_smiles',
                     'conflicting_labels_removed': len(conflicting_label_indices),
                     'duplicate_labels_removed': len(duplicate_label_indices),
                     'total_removed': len(conflicting_label_indices) + len(duplicate_label_indices),
@@ -139,17 +189,14 @@ class CleaningCoreMixin:
                 self.check_data_consistency_and_reliability()
             
             duplicate_indices_to_remove = []
-            if hasattr(self, 'valid_df') and not self.valid_df.empty:
-                grouped = self.valid_df.groupby('canonical_smiles')
+            if not valid_group_df.empty:
+                grouped = valid_group_df.groupby(cleaning_group_col, sort=False)
                 
-                for smiles, group in grouped:
+                for _, group in grouped:
                     if len(group) > 1:
-                        # Check if activity data is exactly identical
-                        activity_data_identical = True
-                        
                         # Get activity data for all molecules in this group
                         activity_values_list = []
-                        for idx, row in group.iterrows():
+                        for _, row in group.iterrows():
                             mol_activity_values = []
                             for activity_col in self.activity_cols:
                                 if activity_col in group.columns:
@@ -173,6 +220,7 @@ class CleaningCoreMixin:
             if duplicate_indices_to_remove:
                 indices_to_remove.update(duplicate_indices_to_remove)
                 cleaning_report['Identical Duplicates'] = {
+                    'grouping_key': 'parent_smiles',
                     'removed_count': len(duplicate_indices_to_remove),
                     'removed_indices': duplicate_indices_to_remove[:10] if len(duplicate_indices_to_remove) > 10 else duplicate_indices_to_remove,
                     'note': 'Removed exact duplicates with identical activity values'
@@ -208,6 +256,6 @@ class CleaningCoreMixin:
             }
             if verbose:
                 print("No molecules removed during cleaning")
-        
-        return cleaned_df, cleaning_report
 
+        cleaned_df = cleaned_df.drop(columns=[internal_row_index_col], errors='ignore')
+        return cleaned_df, cleaning_report

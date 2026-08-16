@@ -1,4 +1,4 @@
-import numpy as np
+from .._common import *
 
 
 class ScoringHelpersMixin:

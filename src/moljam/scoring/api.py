@@ -1,8 +1,5 @@
-from typing import List, Optional
-
 import pandas as pd
 
-from .models import DatabaseScoringReport
 from .scorer import MoleculeDBScorer
 
 
@@ -16,7 +13,12 @@ def score_database(
     name_col=None,
     time_col=None,
     use_parallel=True,
-    include_experimental_info=False,
+    experimental_info=True,
+    parent_form_backend="dimorphite_dl",
+    parent_form_ph=7.4,
+    chemaxon_executable="cxcalc",
+    dimorphite_python=None,
+    dimorphite_conda_env="dimorphite",
 ):
     """
     Score a given molecular database.
@@ -90,7 +92,12 @@ def score_database(
             name_col=name_col,
             time_col=time_col,
             use_parallel=use_parallel,
-            include_experimental_info=include_experimental_info,
+            experimental_info=experimental_info,
+            parent_form_backend=parent_form_backend,
+            parent_form_ph=parent_form_ph,
+            chemaxon_executable=chemaxon_executable,
+            dimorphite_python=dimorphite_python,
+            dimorphite_conda_env=dimorphite_conda_env,
         )
 
         final_adjusted_score = scorer.run_all_checks()
@@ -104,56 +111,3 @@ def score_database(
 
         traceback.print_exc()
         return None, None, None
-
-
-def score_database_json(
-    db_path: str,
-    smiles_col: str = "smiles",
-    activity_cols: Optional[List[str]] = None,
-    class_cols: Optional[List[str]] = None,
-    experimental_method_cols: Optional[List[str]] = None,
-    id_col: Optional[str] = None,
-    name_col: Optional[str] = None,
-    time_col: Optional[str] = None,
-    use_parallel: bool = True,
-    include_experimental_info: bool = False,
-) -> DatabaseScoringReport:
-    """MCP-friendly version of score_database().
-
-    Parameters are identical to score_database().
-    Returns DatabaseScoringReport which can be serialized via .to_json() or .to_dict().
-    """
-    final_score, report_text, scorer = score_database(
-        db_path,
-        smiles_col=smiles_col,
-        activity_cols=activity_cols,
-        class_cols=class_cols,
-        experimental_method_cols=experimental_method_cols,
-        id_col=id_col,
-        name_col=name_col,
-        time_col=time_col,
-        use_parallel=use_parallel,
-        include_experimental_info=include_experimental_info,
-    )
-    if scorer is None:
-        return DatabaseScoringReport(
-            final_score=None,
-            report_text=None,
-            scores=None,
-            analysis_results=None,
-            dataset_info=None,
-        )
-    return DatabaseScoringReport(
-        final_score=final_score,
-        report_text=report_text,
-        scores=scorer.to_result(),
-        analysis_results=scorer.analysis_results,
-        dataset_info={
-            "num_molecules": scorer.num_molecules,
-            "smiles_col": scorer.smiles_col,
-            "activity_cols": scorer.activity_cols,
-            "class_cols": scorer.class_cols,
-            "include_experimental_info": scorer.include_experimental_info,
-        },
-    )
-

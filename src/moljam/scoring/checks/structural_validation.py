@@ -1,18 +1,9 @@
-import time
-from multiprocessing import Pool, cpu_count
-
-import pandas as pd
-from rdkit import Chem
-
-from ..chem import process_single_smiles
-from ..._logging import get_logger
-
-logger = get_logger(__name__)
+from .._common import *
 
 
 class SmilesValidationMixin:
     def validate_smiles(self):
-        """Validate SMILES validity and record canonical level (without scoring)"""
+        """Validate SMILES and build the canonical/standardized/parent pipeline."""
         print("Starting SMILES validation...")
         start_time = time.time()
 
@@ -33,16 +24,42 @@ class SmilesValidationMixin:
         invalid_indices = []
         non_canonical_indices = []
         mol_dict = {}  # Store mol objects by index
-        canonical_smiles_list = []
+        pipeline_outputs = {}
 
         for result in results:
-            idx, mol, canonical_smiles, is_invalid, is_non_canonical = result
+            (
+                idx,
+                mol,
+                canonical_smiles,
+                is_invalid,
+                is_non_canonical,
+                standardized_smiles,
+                observed_parent_smiles,
+                parent_smiles,
+                standardization_comment,
+                parent_comment,
+                removed_salts,
+                removed_solvents,
+                duplicate_parent_fragments,
+                parent_fallback,
+            ) = result
             if is_invalid:
                 invalid_indices.append(idx)
             else:
                 valid_mols.append(mol)
                 mol_dict[idx] = mol
-                canonical_smiles_list.append(canonical_smiles)
+                pipeline_outputs[idx] = {
+                    'canonical_smiles': canonical_smiles,
+                    'standardized_smiles': standardized_smiles,
+                    'observed_parent_smiles': observed_parent_smiles,
+                    'parent_smiles': parent_smiles,
+                    'standardization_comment': standardization_comment,
+                    'parent_comment': parent_comment,
+                    'removed_salts': removed_salts,
+                    'removed_solvents': removed_solvents,
+                    'duplicate_parent_fragments': duplicate_parent_fragments,
+                    'parent_fallback': parent_fallback,
+                }
                 if is_non_canonical:
                     non_canonical_indices.append(idx)
 
@@ -63,14 +80,53 @@ class SmilesValidationMixin:
             # Recreate mols in correct order
             ordered_mols = []
             ordered_canonical_smiles = []
+            ordered_standardized_smiles = []
+            ordered_observed_parent_smiles = []
+            ordered_parent_smiles = []
+            ordered_standardization_comments = []
+            ordered_parent_comments = []
+            ordered_removed_salts = []
+            ordered_removed_solvents = []
+            ordered_duplicate_parent_fragments = []
+            ordered_parent_fallback = []
             for idx in valid_indices:
                 ordered_mols.append(mol_dict[idx])
-                ordered_canonical_smiles.append(Chem.MolToSmiles(mol_dict[idx]))
+                ordered_canonical_smiles.append(pipeline_outputs[idx]['canonical_smiles'])
+                ordered_standardized_smiles.append(pipeline_outputs[idx]['standardized_smiles'])
+                ordered_observed_parent_smiles.append(pipeline_outputs[idx]['observed_parent_smiles'])
+                ordered_parent_smiles.append(pipeline_outputs[idx]['parent_smiles'])
+                ordered_standardization_comments.append(pipeline_outputs[idx]['standardization_comment'])
+                ordered_parent_comments.append(pipeline_outputs[idx]['parent_comment'])
+                ordered_removed_salts.append(pipeline_outputs[idx]['removed_salts'])
+                ordered_removed_solvents.append(pipeline_outputs[idx]['removed_solvents'])
+                ordered_duplicate_parent_fragments.append(pipeline_outputs[idx]['duplicate_parent_fragments'])
+                ordered_parent_fallback.append(pipeline_outputs[idx]['parent_fallback'])
 
             self.valid_df['rdkit_mol'] = ordered_mols
             self.valid_df['canonical_smiles'] = ordered_canonical_smiles
+            self.valid_df['standardized_smiles'] = ordered_standardized_smiles
+            self.valid_df['observed_parent_smiles'] = ordered_observed_parent_smiles
+            self.valid_df['parent_smiles'] = ordered_parent_smiles
+            self.valid_df['standardization_comment'] = ordered_standardization_comments
+            self.valid_df['parent_comment'] = ordered_parent_comments
+            self.valid_df['removed_salts'] = ordered_removed_salts
+            self.valid_df['removed_solvents'] = ordered_removed_solvents
+            self.valid_df['duplicate_parent_fragments'] = ordered_duplicate_parent_fragments
+            self.valid_df['parent_fallback'] = ordered_parent_fallback
             self.valid_df['original_index'] = valid_indices  # Store original indices
             self.valid_mols = ordered_mols  # Update to maintain order
+
+            standardized_changed = int(
+                (self.valid_df['standardized_smiles'] != self.valid_df['canonical_smiles']).sum()
+            )
+            parent_changed = int(
+                (self.valid_df['parent_smiles'] != self.valid_df['standardized_smiles']).sum()
+            )
+            parent_fallback_count = int(self.valid_df['parent_fallback'].sum())
+        else:
+            standardized_changed = 0
+            parent_changed = 0
+            parent_fallback_count = 0
 
         # Use score_count_based_issues instead of score_low_count_issues
         invalid_count = len(invalid_indices)
@@ -90,6 +146,12 @@ class SmilesValidationMixin:
             'Non-standardized rate': f"{self.non_canonical_rate:.2f}%",
             'Validity score': f"{score:.2f}/10"
         }
+        self.analysis_results['Processing Pipeline'] = {
+            'Standardized molecules changed vs canonical': standardized_changed,
+            'Parent molecules changed vs standardized': parent_changed,
+            'Parent fallback count': parent_fallback_count,
+            'Default final result': 'parent_smiles',
+        }
 
         self.scores["Structural Integrity"]["Valid SMILES"] = score
 
@@ -100,4 +162,3 @@ class SmilesValidationMixin:
 
         self.completed_checks.add('validate_smiles')
         return score
-

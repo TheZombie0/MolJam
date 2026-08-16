@@ -20,4 +20,5 @@ from .chem import (
     process_single_smiles,
 )
 
-# Side effects moved to MoleculeDBScorer.__init__()
+warnings.filterwarnings('ignore')
+DisableLog('rdApp.warning')

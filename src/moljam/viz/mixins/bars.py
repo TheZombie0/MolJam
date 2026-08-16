@@ -17,8 +17,8 @@ class BarsPlotMixin:
             # Check if this category exists in at least one database
             category_exists = False
             for db_name, results in self.scoring_results.items():
-                snap = results['snapshot']
-                if category in snap.scores:
+                scorer = results['scorer']
+                if category in scorer.scores:
                     category_exists = True
                     break
 
@@ -64,15 +64,15 @@ class BarsPlotMixin:
             
         # Plot bars for each database
         for db_idx, (db_name, results) in enumerate(self.scoring_results.items()):
-            snap = results['snapshot']
+            scorer = results['scorer']
             metric_scores = []
             metric_positions = []
-
+            
             # Collect scores for all metrics
             for metric in all_metrics_raw:
                 for category, metrics in available_categories.items():
                     if metric in metrics:
-                        score = snap.scores[category].get(metric, 0)
+                        score = scorer.scores.get(category, {}).get(metric, 0)
                         # Handle None values by treating them as 0
                         if score is None:
                             score = 0
@@ -145,8 +145,8 @@ class BarsPlotMixin:
             # Check if this category exists in at least one database
             category_exists = False
             for db_name, results in self.scoring_results.items():
-                snap = results['snapshot']
-                if category in snap.scores:
+                scorer = results['scorer']
+                if category in scorer.scores:
                     category_exists = True
                     break
 
@@ -176,10 +176,10 @@ class BarsPlotMixin:
             metric_positions = np.arange(len(metrics))
 
             for db_idx, (db_name, results) in enumerate(self.scoring_results.items()):
-                snap = results['snapshot']
+                scorer = results['scorer']
                 scores = []
                 for metric in metrics:
-                    score = snap.scores[category].get(metric, 0)
+                    score = scorer.scores.get(category, {}).get(metric, 0)
                     # Handle None values by treating them as 0
                     if score is None:
                         score = 0
@@ -242,4 +242,3 @@ class BarsPlotMixin:
         if save_path:
             plotting.plt.savefig(save_path, dpi=500, bbox_inches='tight')
         #
-

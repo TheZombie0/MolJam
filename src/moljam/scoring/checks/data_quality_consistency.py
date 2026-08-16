@@ -1,10 +1,4 @@
-import time
-
-import numpy as np
-
-from ..._logging import get_logger
-
-logger = get_logger(__name__)
+from .._common import *
 
 
 class DataConsistencyReliabilityMixin:
@@ -61,6 +55,15 @@ class DataConsistencyReliabilityMixin:
             sub_results['Structural Duplication'] = {
                 'Duplicate molecules': duplicate_count,
                 'Duplication rate': f"{duplicate_rate:.2f}%",
+                'Example indexing note': (
+                    "Indices in examples are 1-based row numbers in the original input table "
+                    "(header row excluded for CSV files)"
+                ),
+                'Example SMILES note': (
+                    "original_smiles_with_indices preserves the raw input SMILES before "
+                    "canonicalization, so entries in one duplicate group can have different "
+                    "SMILES strings while sharing the same canonical_smiles"
+                ),
                 'Duplicate SMILES examples': duplicate_examples,
                 'Score': f"{duplication_score:.2f}/10"
             }
@@ -219,4 +222,3 @@ class DataConsistencyReliabilityMixin:
         
         self.completed_checks.add('check_data_consistency_and_reliability')
         return total_score
-

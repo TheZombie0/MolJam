@@ -9,14 +9,14 @@ class StructuralDuplicationPlotMixin:
             print(f"Database {db_name} not found in scoring results.")
             return
 
-        snap = self.scoring_results[db_name]['snapshot']
+        scorer = self.scoring_results[db_name]['scorer']
 
         # Get structural duplication examples from analysis results
-        if 'Data Consistency and Reliability' not in snap.analysis_results:
+        if 'Data Consistency and Reliability' not in scorer.analysis_results:
             print(f"No data consistency analysis found for {db_name}")
             return
 
-        structural_duplication = snap.analysis_results['Data Consistency and Reliability'].get('Structural Duplication', {})
+        structural_duplication = scorer.analysis_results['Data Consistency and Reliability'].get('Structural Duplication', {})
         duplicate_examples = structural_duplication.get('Duplicate SMILES examples', [])
 
         if not duplicate_examples:
@@ -160,14 +160,14 @@ class StructuralDuplicationPlotMixin:
             print(f"Database {db_name} not found in scoring results.")
             return
 
-        snap = self.scoring_results[db_name]['snapshot']
+        scorer = self.scoring_results[db_name]['scorer']
 
         # Get structural duplication examples from analysis results
-        if 'Data Consistency and Reliability' not in snap.analysis_results:
+        if 'Data Consistency and Reliability' not in scorer.analysis_results:
             print(f"No data consistency analysis found for {db_name}")
             return
 
-        structural_duplication = snap.analysis_results['Data Consistency and Reliability'].get('Structural Duplication', {})
+        structural_duplication = scorer.analysis_results['Data Consistency and Reliability'].get('Structural Duplication', {})
         duplicate_examples = structural_duplication.get('Duplicate SMILES examples', [])
 
         if not duplicate_examples:

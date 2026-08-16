@@ -1,13 +1,42 @@
-import time
-
-import numpy as np
-
-from ..._logging import get_logger
-
-logger = get_logger(__name__)
+from .._common import *
 
 
 class DataBalanceDistributionMixin:
+    LOG_SCALE_ACTIVITY_MARKERS = (
+        "pchembl",
+        "pic50",
+        "pec50",
+        "pki",
+        "pkd",
+    )
+
+    def _is_log_scale_activity_column(self, column_name):
+        column_lower = str(column_name).lower()
+        return any(marker in column_lower for marker in self.LOG_SCALE_ACTIVITY_MARKERS)
+
+    def _compute_range_adequacy(self, column_name, activity_data, std):
+        q05 = float(activity_data.quantile(0.05))
+        q95 = float(activity_data.quantile(0.95))
+        effective_span = max(0.0, q95 - q05)
+
+        if effective_span <= 0:
+            return 0.0, "No effective range", q05, q95, effective_span
+
+        if self._is_log_scale_activity_column(column_name):
+            range_adequacy = min(1.0, effective_span / 3.0)
+            return range_adequacy, "log_scale_value_span_q95_minus_q05", q05, q95, effective_span
+
+        if q05 > 0 and q95 > 0:
+            log_span = np.log10(q95) - np.log10(q05)
+            range_adequacy = min(1.0, log_span / 3.0)
+            return range_adequacy, "positive_value_log10_span_q95_over_q05", q05, q95, log_span
+
+        if std > 0:
+            range_adequacy = min(1.0, effective_span / (4 * std))
+        else:
+            range_adequacy = 0.0
+        return range_adequacy, "robust_linear_span_over_4std", q05, q95, effective_span
+
     def analyze_data_balance_and_distribution(self):
         """Combined analysis of continuous and categorical data distribution"""
         sub_results = {}
@@ -47,13 +76,12 @@ class DataBalanceDistributionMixin:
                     
                     hist, bin_edges = np.histogram(activity_data, bins=10)
                     bin_occupancy = sum(1 for count in hist if count > 0) / len(hist)
-                    
-                    if min_val > 0 and max_val > 0:
-                        log_range = np.log10(max_val) - np.log10(min_val)
-                        range_adequacy = min(1, log_range / 2)
-                    else:
-                        range = max_val - min_val
-                        range_adequacy = min(1, range / (5 * std)) if std > 0 else 0
+
+                    range_adequacy, range_method, q05, q95, effective_span = self._compute_range_adequacy(
+                        activity_col,
+                        activity_data,
+                        std,
+                    )
                     
                     skewness_error_rate = abs(skewness) * 50
                     skewness_score = self.calculate_quality_score(skewness_error_rate, max_score=3.33, threshold_low=25, threshold_high=75)
@@ -72,9 +100,12 @@ class DataBalanceDistributionMixin:
                         'Median': f"{median:.4f}",
                         'Standard deviation': f"{std:.4f}",
                         'Range': f"{min_val:.4f} to {max_val:.4f}",
+                        'Robust range (q05-q95)': f"{q05:.4f} to {q95:.4f}",
                         'Skewness': f"{skewness:.4f}",
                         'Bin occupancy': f"{bin_occupancy*100:.2f}%",
                         'Range adequacy': f"{range_adequacy:.4f}",
+                        'Range method': range_method,
+                        'Effective range span': f"{effective_span:.4f}",
                         'Score': f"{column_score:.2f}/10"
                     }
                     
@@ -199,4 +230,3 @@ class DataBalanceDistributionMixin:
         
         self.completed_checks.add('analyze_data_balance_and_distribution')
         return total_score
-

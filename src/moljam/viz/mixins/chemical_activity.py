@@ -12,11 +12,11 @@ class ActivityConsistencyPlotMixin:
         fig, ax = plotting.plt.subplots(figsize=figsize)
         
         for db_idx, (db_name, results) in enumerate(self.scoring_results.items()):
-            snap = results['snapshot']
+            scorer = results['scorer']
             activity_cols = results['activity_cols']
-
-            if activity_cols and activity_cols[0] in snap.df.columns:
-                activity_data = snap.df[activity_cols[0]].dropna()
+            
+            if activity_cols and activity_cols[0] in scorer.df.columns:
+                activity_data = scorer.df[activity_cols[0]].dropna()
                 
                 if len(activity_data) > 1:
                     # Calculate KDE
@@ -63,11 +63,11 @@ class ActivityConsistencyPlotMixin:
         max_cvs = []
         
         for db_name, results in self.scoring_results.items():
-            snap = results['snapshot']
+            scorer = results['scorer']
             activity_cols = results['activity_cols']
-
-            if activity_cols and hasattr(snap, 'valid_df') and not snap.valid_df.empty:
-                grouped = snap.valid_df.groupby('canonical_smiles')
+            
+            if activity_cols and hasattr(scorer, 'valid_df') and not scorer.valid_df.empty:
+                grouped = scorer.valid_df.groupby('canonical_smiles')
                 cv_values = []
                 
                 for smiles, group in grouped:
@@ -136,14 +136,14 @@ class ActivityConsistencyPlotMixin:
             return
         
         for db_name, class_cols in multi_class_dbs.items():
-            snap = self.scoring_results[db_name]['snapshot']
-
+            scorer = self.scoring_results[db_name]['scorer']
+            
             # Create conflict matrix
             n_cols = len(class_cols)
             conflict_matrix = np.zeros((n_cols, n_cols))
-
-            if hasattr(snap, 'valid_df') and not snap.valid_df.empty:
-                grouped = snap.valid_df.groupby('canonical_smiles')
+            
+            if hasattr(scorer, 'valid_df') and not scorer.valid_df.empty:
+                grouped = scorer.valid_df.groupby('canonical_smiles')
                 
                 for smiles, group in grouped:
                     if len(group) > 1:

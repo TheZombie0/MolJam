@@ -9,13 +9,13 @@ class MolecularPropertiesPlotMixin:
         if db_name in self.property_cache:
             return self.property_cache[db_name]
 
-        snap = self.scoring_results[db_name]['snapshot']
+        scorer = self.scoring_results[db_name]['scorer']
 
-        if not hasattr(snap, 'valid_df') or snap.valid_df.empty:
+        if not hasattr(scorer, 'valid_df') or scorer.valid_df.empty:
             return None
 
         # Use parallel processing if enabled
-        canonical_smiles = snap.valid_df['canonical_smiles'].tolist()
+        canonical_smiles = scorer.valid_df['canonical_smiles'].tolist()
 
         if self.use_parallel:
             n_workers = min(cpu_count(), 100)
@@ -81,7 +81,7 @@ class MolecularPropertiesPlotMixin:
         plotting.plt.savefig(save_path, dpi=500, bbox_inches='tight')
         plotting.plt.close()
 
-    def plot_lipinski_violations(self, figsize=(16, 8), save_path=None):
+    def plot_lipinski_violations(self, figsize=(14, 8), save_path=None):
         """Plot Lipinski rule violations"""
         if not self.scoring_results:
             print("No scoring results available.")
@@ -166,7 +166,7 @@ class MolecularPropertiesPlotMixin:
         plotting.plt.savefig(save_path, dpi=500, bbox_inches='tight')
         plotting.plt.close()
 
-    def plot_qed_distribution(self, figsize=(12, 6), save_path=None):
+    def plot_qed_distribution(self, figsize=(14, 8), save_path=None):
         """
         绘制多个数据库的QED分数分布图（只显示拟合曲线）
         使用并行处理加速QED计算
@@ -178,14 +178,14 @@ class MolecularPropertiesPlotMixin:
         fig, ax = plotting.plt.subplots(figsize=figsize)
 
         for db_idx, (db_name, results) in enumerate(self.scoring_results.items()):
-            snap = results['snapshot']
+            scorer = results['scorer']
 
             # 获取QED数据
-            if hasattr(snap, 'valid_df') and not snap.valid_df.empty:
-                print(f"  Calculating QED for {db_name} ({len(snap.valid_df)} molecules)...")
+            if hasattr(scorer, 'valid_df') and not scorer.valid_df.empty:
+                print(f"  Calculating QED for {db_name} ({len(scorer.valid_df)} molecules)...")
 
                 # 使用并行处理计算QED值
-                canonical_smiles = snap.valid_df['canonical_smiles'].tolist()
+                canonical_smiles = scorer.valid_df['canonical_smiles'].tolist()
 
                 if self.use_parallel:
                     n_workers = min(cpu_count(), 100)
@@ -213,11 +213,12 @@ class MolecularPropertiesPlotMixin:
                            color=self.colors[db_idx % len(self.colors)],
                            linewidth=2, label=f'{db_name} (n={len(qed_values)})')
 
-        ax.set_xlabel('QED Score', fontsize=12)
-        ax.set_ylabel('Density', fontsize=12)
-        ax.set_title('QED Score Distribution Comparison', fontsize=16, fontweight='bold')
+        ax.set_xlabel('QED Score', fontsize=21)
+        ax.set_ylabel('Density', fontsize=21)
+        ax.set_title('QED Score Distribution Comparison', fontsize=23)
         ax.set_xlim(0, 1)
-        ax.legend()
+        ax.tick_params(labelsize=18)
+        ax.legend(fontsize=16)
         ax.grid(True, alpha=0.3)
 
         plotting.plt.tight_layout()
@@ -226,4 +227,3 @@ class MolecularPropertiesPlotMixin:
             save_path = os.path.join(self.comparison_dir, 'qed_distribution.png')
         plotting.plt.savefig(save_path, dpi=500, bbox_inches='tight')
         plotting.plt.close()
-

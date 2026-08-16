@@ -16,10 +16,10 @@ class SankeyMatplotlibFallbackMixin:
             print(f"Database {db_name} not found in scoring results.")
             return
 
-        snap = self.scoring_results[db_name]['snapshot']
+        scorer = self.scoring_results[db_name]['scorer']
 
         # Get metric penalties
-        metric_penalties = snap.scores.get('Metric Penalties', {})
+        metric_penalties = scorer.scores.get('Metric Penalties', {})
 
         # Prepare data structures
         flows_data = []
@@ -35,13 +35,13 @@ class SankeyMatplotlibFallbackMixin:
 
         # Collect all metrics data
         for category, metrics in self.categories.items():
-            if category not in snap.scores:
+            if category not in scorer.scores:
                 continue
 
             base_color = category_colors.get(category, '#95a5a6')
 
             for idx, metric in enumerate(metrics):
-                score = snap.scores[category].get(metric, 0)
+                score = scorer.scores[category].get(metric, 0)
                 if score is None:
                     score = 0
 
@@ -199,9 +199,9 @@ class SankeyMatplotlibFallbackMixin:
         ax.axis('off')
 
         # Add title
-        total_score = snap.scores.get('Normalized Score', 0)
-        final_score = snap.scores.get('Final Adjusted Score', 0)
-        penalty_total = snap.analysis_results.get('Low Score Penalty', {}).get('Total penalty applied', '0')
+        total_score = scorer.scores.get('Normalized Score', 0)
+        final_score = scorer.scores.get('Final Adjusted Score', 0)
+        penalty_total = scorer.analysis_results.get('Low Score Penalty', {}).get('Total penalty applied', '0')
 
         ax.text(0.5, 0.98, f'Score Flow Diagram - {db_name}',
                ha='right', va='top', fontsize=16, fontweight='bold')

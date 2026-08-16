@@ -9,14 +9,14 @@ class ContradictoryLabelPlotMixin:
             print(f"Database {db_name} not found in scoring results.")
             return
 
-        snap = self.scoring_results[db_name]['snapshot']
+        scorer = self.scoring_results[db_name]['scorer']
 
         # Get contradictory examples from analysis results
-        if 'Label Consistency' not in snap.analysis_results:
+        if 'Label Consistency' not in scorer.analysis_results:
             print(f"No label consistency analysis found for {db_name}")
             return
 
-        label_consistency = snap.analysis_results['Label Consistency']
+        label_consistency = scorer.analysis_results['Label Consistency']
         details_by_column = label_consistency.get('Details by column', {})
 
         if not details_by_column:
@@ -34,147 +34,117 @@ class ContradictoryLabelPlotMixin:
             # Fixed parameters for layout
             row_width = 4   # Fixed total width per row in inches
             row_height = 3  # Fixed total height per row in inches
+            max_rows_per_figure = 20
+            n_molecules_total = len(contradictory_examples)
+            column_safe = column_name.replace('/', '_').replace(' ', '_')
 
-            # Calculate total height based on number of molecules
-            n_molecules = len(contradictory_examples)
-            total_height = n_molecules * row_height
+            for page_idx, start_idx in enumerate(range(0, n_molecules_total, max_rows_per_figure), start=1):
+                page_examples = contradictory_examples[start_idx:start_idx + max_rows_per_figure]
+                n_rows = len(page_examples)
+                total_height = n_rows * row_height
 
-            # Create single figure with all molecules as rows
-            fig = plotting.plt.figure(figsize=(row_width, total_height))
+                fig = plotting.plt.figure(figsize=(row_width, total_height))
+                current_y_position = 0
+                row_specs = []
 
-            # Create a list to track row positions and dimensions
-            current_y_position = 0
-            row_specs = []
+                for local_idx, example in enumerate(page_examples):
+                    original_smiles_with_indices = example['original_smiles_with_indices']
+                    n_instances_in_group = len(original_smiles_with_indices)
 
-            for mol_idx, example in enumerate(contradictory_examples):
-                canonical_smiles = example['canonical_smiles']
-                original_smiles_with_indices = example['original_smiles_with_indices']
-                conflicting_labels = example['conflicting_labels']
-                count = example['count']
+                    row_specs.append({
+                        'global_idx': start_idx + local_idx,
+                        'n_instances': n_instances_in_group,
+                        'instances': original_smiles_with_indices,
+                        'canonical_smiles': example['canonical_smiles'],
+                        'conflicting_labels': example['conflicting_labels'],
+                        'count': example['count'],
+                        'y_start': current_y_position / total_height,
+                        'y_height': row_height / total_height
+                    })
 
-                # Get number of instances in this conflict group
-                n_instances_in_group = len(original_smiles_with_indices)
+                    current_y_position += row_height
 
-                # Store this row's specification
-                row_specs.append({
-                    'mol_idx': mol_idx,
-                    'n_instances': n_instances_in_group,
-                    'instances': original_smiles_with_indices,
-                    'canonical_smiles': canonical_smiles,
-                    'conflicting_labels': conflicting_labels,
-                    'count': count,
-                    'y_start': current_y_position / total_height,
-                    'y_height': row_height / total_height
-                })
+                for row_info in row_specs:
+                    n_instances_in_group = row_info['n_instances']
+                    y_start = row_info['y_start']
+                    y_height = row_info['y_height']
 
-                current_y_position += row_height
+                    gs_row = fig.add_gridspec(1, n_instances_in_group,
+                                             top=y_start + y_height,
+                                             bottom=y_start)
 
-            # Now render each row with its own plotting.GridSpec
-            for row_info in row_specs:
-                mol_idx = row_info['mol_idx']
-                n_instances_in_group = row_info['n_instances']
-                y_start = row_info['y_start']
-                y_height = row_info['y_height']
+                    for col_idx, instance in enumerate(row_info['instances']):
+                        ax = fig.add_subplot(gs_row[0, col_idx])
 
-                # Create plotting.GridSpec for this row with proper spacing
-                # top: leave space for row title (0.25 of row height)
-                # bottom: leave space for subplot title (0.25 of row height)
-                gs_row = fig.add_gridspec(1, n_instances_in_group,
-                                         top=y_start + y_height,
-                                         bottom=y_start)
+                        smiles = instance['smiles']
+                        index = instance['index']
+                        label_value = instance['label']
+                        mol = Chem.MolFromSmiles(smiles)
 
-                # Process each conflict instance in this molecule (each becomes a column in this row)
-                for col_idx, instance in enumerate(row_info['instances']):
-                    ax = fig.add_subplot(gs_row[0, col_idx])
+                        if mol is None:
+                            ax.text(0.5, 0.5, 'Failed to parse molecule',
+                                   ha='center', va='center', transform=ax.transAxes, fontsize=8)
+                            ax.axis('off')
+                        else:
+                            from rdkit.Chem import AllChem
+                            from rdkit.Chem.Draw import rdMolDraw2D
+                            from PIL import Image
+                            import io
 
-                    # Use the original SMILES for drawing
-                    smiles = instance['smiles']
-                    index = instance['index']  # Already 1-based from optimized_scorer.py
-                    label_value = instance['label']
-                    mol = Chem.MolFromSmiles(smiles)
+                            AllChem.Compute2DCoords(mol)
+                            drawer = rdMolDraw2D.MolDraw2DCairo(400, 400)
+                            options = drawer.drawOptions()
+                            options.baseFontSize = 2
+                            drawer.SetLineWidth(4)
+                            drawer.DrawMolecule(mol)
+                            drawer.FinishDrawing()
 
-                    if mol is None:
-                        ax.text(0.5, 0.5, 'Failed to parse molecule',
-                               ha='center', va='center', transform=ax.transAxes, fontsize=8)
-                        ax.axis('off')
-                    else:
-                        # Generate 2D coordinates
-                        from rdkit.Chem import AllChem
-                        AllChem.Compute2DCoords(mol)
+                            img_data = drawer.GetDrawingText()
+                            img = Image.open(io.BytesIO(img_data))
+                            ax.imshow(img)
+                            ax.axis('off')
 
-                        # Draw molecule
-                        from rdkit.Chem.Draw import rdMolDraw2D
-                        from PIL import Image
-                        import io
+                    row_title_y = y_start + y_height
+                    display_mol_idx = n_molecules_total - row_info['global_idx']
+                    row_title_text = f"Molecule {display_mol_idx} (Count: {row_info['count']})\nCanonical: {row_info['canonical_smiles'][:40]}{'...' if len(row_info['canonical_smiles']) > 40 else ''}"
 
-                        # Create drawer
-                        drawer = rdMolDraw2D.MolDraw2DCairo(400, 400)
-                        options = drawer.drawOptions()
-                        options.baseFontSize = 2
-                        drawer.SetLineWidth(4)
+                    molecule_labels = []
+                    for mol_idx_inner, instance in enumerate(row_info['instances']):
+                        smiles = instance['smiles']
+                        index = instance['index']
+                        label_value = instance['label']
+                        molecule_labels.append(f"Molecule{mol_idx_inner+1}: {smiles}   Label: {label_value}   #{index}")
+                    merged_labels = "\n".join(molecule_labels)
 
-                        # Draw molecule
-                        drawer.DrawMolecule(mol)
-                        drawer.FinishDrawing()
+                    fig.text(0.5, row_title_y, row_title_text,
+                            ha='center', va='top', fontsize=8,
+                            bbox=dict(boxstyle="round", facecolor="lightcoral", alpha=0.7))
 
-                        # Convert to image
-                        img_data = drawer.GetDrawingText()
-                        img = Image.open(io.BytesIO(img_data))
+                    labels_y = row_title_y - 0.011
+                    fig.text(0.5, labels_y, merged_labels,
+                            ha='center', va='top', fontsize=8)
 
-                        # Display in subplot
-                        ax.imshow(img)
-                        ax.axis('off')
+                title = f'Contradictory Labels in {db_name} - Column: {column_name}'
+                if n_molecules_total > max_rows_per_figure:
+                    title += f' (Part {page_idx})'
+                fig.suptitle(title, fontsize=13, y=1.01)
 
-                    # Add text information above the image (with reduced fontsize and padding)
-                    # title = f"Original: {smiles[:30]}{'...' if len(smiles) > 30 else ''}\n"
-                    # title += f"Label: {label_value} | #{index}"
-                    # ax.set_title(title, fontsize=7)# , pad=2)
+                if save_path:
+                    base_path = save_path.replace('.png', '')
+                    column_save_path = f"{base_path}_{column_safe}"
+                else:
+                    column_save_path = os.path.join(
+                        self.scoring_results[db_name]['output_dir'],
+                        f'contradictory_labels_{column_safe}'
+                    )
 
-                # Add row title for this molecule group (positioned above the plotting.GridSpec area)
-                row_title_y = y_start + y_height
-                display_mol_idx = n_molecules - mol_idx  # Display in reverse order (1 to n_molecules)
-                row_title_text = f"Molecule {display_mol_idx} (Count: {row_info['count']})\nCanonical: {row_info['canonical_smiles'][:40]}{'...' if len(row_info['canonical_smiles']) > 40 else ''}"
+                if n_molecules_total > max_rows_per_figure:
+                    column_save_path = f"{column_save_path}_part{page_idx}"
 
-                # Create merged labels for all molecules in this row
-                molecule_labels = []
-                for mol_idx_inner, instance in enumerate(row_info['instances']):
-                    smiles = instance['smiles']
-                    index = instance['index']
-                    label_value = instance['label']
-                    molecule_labels.append(f"Molecule{mol_idx_inner+1}: {smiles}   Label: {label_value}   #{index}")
-                merged_labels = "\n".join(molecule_labels)
-
-                # Add main title
-                fig.text(0.5, row_title_y, row_title_text,
-                        ha='center', va='top', fontsize=8,
-                        bbox=dict(boxstyle="round", facecolor="lightcoral", alpha=0.7))
-
-                # Add merged molecule labels below the main title with colored label values
-                labels_y = row_title_y - 0.011  # Position below the main title
-                fig.text(0.5, labels_y, merged_labels,
-                        ha='center', va='top', fontsize=8)
-                        # bbox=dict(boxstyle="round", facecolor="lightgreen", alpha=0.8))
-
-            # Add main title with proper spacing
-            fig.suptitle(f'Contradictory Labels in {db_name} - Column: {column_name}', fontsize=13, y=1.01)
-
-            # Use subplots_adjust to prevent overlap
-            # plotting.plt.subplots_adjust(top=0.98, bottom=0.02, left=0.05, right=0.95, hspace=0.0)
-
-            # Generate save path for this column
-            if save_path:
-                base_path = save_path.replace('.png', '')
-                column_safe = column_name.replace('/', '_').replace(' ', '_')
-                column_save_path = f"{base_path}_{column_safe}.png"
+                column_save_path = f"{column_save_path}.png"
                 plotting.plt.savefig(column_save_path, dpi=500, bbox_inches='tight')
                 print(f"Saved contradictory labels plot for column '{column_name}' to: {column_save_path}")
-            else:
-                column_save_path = os.path.join(self.scoring_results[db_name]['output_dir'],
-                                               f'contradictory_labels_{column_name.replace("/", "_").replace(" ", "_")}.png')
-                plotting.plt.savefig(column_save_path, dpi=500, bbox_inches='tight')
-                print(f"Saved contradictory labels plot for column '{column_name}' to: {column_save_path}")
-
-            plotting.plt.close()
+                plotting.plt.close()
 
         #
 
@@ -184,14 +154,14 @@ class ContradictoryLabelPlotMixin:
             print(f"Database {db_name} not found in scoring results.")
             return
 
-        snap = self.scoring_results[db_name]['snapshot']
+        scorer = self.scoring_results[db_name]['scorer']
 
         # Get contradictory examples from analysis results
-        if 'Label Consistency' not in snap.analysis_results:
+        if 'Label Consistency' not in scorer.analysis_results:
             print(f"No label consistency analysis found for {db_name}")
             return
 
-        label_consistency = snap.analysis_results['Label Consistency']
+        label_consistency = scorer.analysis_results['Label Consistency']
         details_by_column = label_consistency.get('Details by column', {})
 
         if not details_by_column:
@@ -299,4 +269,3 @@ class ContradictoryLabelPlotMixin:
             print(f"  Saved {len(contradictory_examples)} images for column '{column_name}' to: {col_output_dir}")
 
         print(f"  Total: {total_images} contradictory label images generated")
-

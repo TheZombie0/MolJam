@@ -1,4 +1,4 @@
-from rdkit.Chem import AllChem
+from .._common import *
 
 
 class FingerprintBatchMixin:

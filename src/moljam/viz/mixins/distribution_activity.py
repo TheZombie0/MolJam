@@ -14,11 +14,11 @@ class ActivityDistributionPlotMixin:
         db_names = []
         
         for db_name, results in self.scoring_results.items():
-            snap = results['snapshot']
+            scorer = results['scorer']
             activity_cols = results['activity_cols']
-
-            if activity_cols and activity_cols[0] in snap.df.columns:
-                data = snap.df[activity_cols[0]].dropna().values
+            
+            if activity_cols and activity_cols[0] in scorer.df.columns:
+                data = scorer.df[activity_cols[0]].dropna().values
                 if len(data) > 0:
                     activity_data.append(data)
                     db_names.append(db_name)
@@ -51,8 +51,8 @@ class ActivityDistributionPlotMixin:
         plotting.plt.savefig(save_path, dpi=500, bbox_inches='tight')
         plotting.plt.close()
 
-    def plot_activity_raincloud(self, activity_col=None, figsize=(14, 8), save_path=None):
-        """Plot raincloud plot of activity values"""
+    def plot_activity_raincloud(self, activity_col=None, figsize=(14, 8), save_path=None, show_points=False):
+        """Plot raincloud plot of activity values."""
         if not self.scoring_results:
             print("No scoring results available.")
             return
@@ -62,16 +62,16 @@ class ActivityDistributionPlotMixin:
         db_names = []
         
         for db_name, results in self.scoring_results.items():
-            snap = results['snapshot']
+            scorer = results['scorer']
             activity_cols = results['activity_cols']
-
+            
             # Use specified activity column or first activity column
             col = activity_col
             if col is None and activity_cols:
                 col = activity_cols[0]
-
-            if col and col in snap.df.columns:
-                data = snap.df[col].dropna().values
+            
+            if col and col in scorer.df.columns:
+                data = scorer.df[col].dropna().values
                 if len(data) > 0:
                     # Add to combined data
                     for val in data:
@@ -98,14 +98,15 @@ class ActivityDistributionPlotMixin:
                     width=0.2, ax=ax, color='white',
                     boxprops=dict(alpha=0.7), showfliers=False)
         
-        # Add stripplot for individual points (subsample if too many)
-        if len(df) > 5000:
-            df_sample = df.sample(5000, random_state=42)
-        else:
-            df_sample = df
-            
-        plotting.sns.stripplot(x='Database', y='Activity', data=df_sample,
-                      color='black', size=2, alpha=0.3, ax=ax, jitter=True)
+        if show_points:
+            # Add stripplot for individual points (subsample if too many)
+            if len(df) > 5000:
+                df_sample = df.sample(5000, random_state=42)
+            else:
+                df_sample = df
+
+            plotting.sns.stripplot(x='Database', y='Activity', data=df_sample,
+                          color='black', size=2, alpha=0.3, ax=ax, jitter=True)
         
         ax.set_xlabel('Database', fontsize=21)
         ax.set_ylabel('Activity Value', fontsize=21)
@@ -120,4 +121,3 @@ class ActivityDistributionPlotMixin:
             save_path = os.path.join(self.distribution_dir, 'activity_raincloud.png')
         plotting.plt.savefig(save_path, dpi=500, bbox_inches='tight')
         plotting.plt.close()
-

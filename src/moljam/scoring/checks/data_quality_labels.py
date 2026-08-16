@@ -1,11 +1,4 @@
-import time
-
-import numpy as np
-import pandas as pd
-
-from ..._logging import get_logger
-
-logger = get_logger(__name__)
+from .._common import *
 
 
 class LabelConsistencyChecksMixin:
@@ -145,6 +138,15 @@ class LabelConsistencyChecksMixin:
         self.analysis_results['Label Consistency'] = {
             'Total molecules with contradictory labels': contradictory_count,
             'Overall contradictory label rate': f"{overall_contradiction_rate:.2f}%",
+            'Example indexing note': (
+                "Indices in examples are 1-based row numbers in the original input table "
+                "(header row excluded for CSV files)"
+            ),
+            'Example SMILES note': (
+                "original_smiles_with_indices preserves the raw input SMILES before "
+                "canonicalization, so entries in one contradictory group can have different "
+                "SMILES strings while sharing the same canonical_smiles"
+            ),
             'Details by column': column_results,
             'Overall contradictory examples': overall_contradictory_examples,  # 新增
             'Score': f"{score:.2f}/10"
@@ -158,4 +160,3 @@ class LabelConsistencyChecksMixin:
 
         self.completed_checks.add('check_label_consistency')
         return score
-

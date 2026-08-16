@@ -1,8 +1,4 @@
-import numpy as np
-
-from ..._logging import get_logger
-
-logger = get_logger(__name__)
+from .._common import *
 
 
 class DataSizeChecksMixin:

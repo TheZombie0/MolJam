@@ -12,12 +12,12 @@ class DistributionBalancePlotMixin:
         fig, ax = plotting.plt.subplots(figsize=figsize)
         
         for db_idx, (db_name, results) in enumerate(self.scoring_results.items()):
-            snap = results['snapshot']
+            scorer = results['scorer']
             class_cols = results['class_cols']
-
-            if class_cols and class_cols[0] in snap.df.columns:
+            
+            if class_cols and class_cols[0] in scorer.df.columns:
                 # Get class distribution
-                class_counts = snap.df[class_cols[0]].value_counts().sort_values()
+                class_counts = scorer.df[class_cols[0]].value_counts().sort_values()
                 
                 if len(class_counts) > 1:
                     # Calculate cumulative proportions
@@ -48,7 +48,7 @@ class DistributionBalancePlotMixin:
         plotting.plt.savefig(save_path, dpi=500, bbox_inches='tight')
         plotting.plt.close()
 
-    def plot_class_entropy_comparison(self, figsize=(12, 6), save_path=None):
+    def plot_class_entropy_comparison(self, figsize=(14, 8), save_path=None):
         """Plot entropy of class distributions"""
         if not self.scoring_results:
             print("No scoring results available.")
@@ -59,12 +59,12 @@ class DistributionBalancePlotMixin:
         normalized_entropies = []
         
         for db_name, results in self.scoring_results.items():
-            snap = results['snapshot']
+            scorer = results['scorer']
             class_cols = results['class_cols']
-
-            if class_cols and class_cols[0] in snap.df.columns:
+            
+            if class_cols and class_cols[0] in scorer.df.columns:
                 # Get class distribution
-                class_counts = snap.df[class_cols[0]].value_counts()
+                class_counts = scorer.df[class_cols[0]].value_counts()
                 
                 if len(class_counts) > 1:
                     # Calculate entropy
@@ -112,7 +112,7 @@ class DistributionBalancePlotMixin:
         
         # Add reference line for perfect balance
         ax2.axhline(y=1.0, color='r', linestyle='--', alpha=0.5, label='Perfect Balance')
-        ax2.legend()
+        ax2.legend(fontsize=16)
         
         plotting.plt.suptitle('Class Distribution Entropy Analysis', fontsize=23)
         plotting.plt.tight_layout()
@@ -121,4 +121,3 @@ class DistributionBalancePlotMixin:
             save_path = os.path.join(self.distribution_dir, 'class_entropy_comparison.png')
         plotting.plt.savefig(save_path, dpi=500, bbox_inches='tight')
         plotting.plt.close()
-

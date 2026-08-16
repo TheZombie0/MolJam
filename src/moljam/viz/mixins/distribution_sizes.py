@@ -3,7 +3,7 @@ from .. import plotting
 
 
 class DatabaseSizePlotMixin:
-    def plot_database_size_comparison(self, figsize=(12, 6), save_path=None):
+    def plot_database_size_comparison(self, figsize=(14, 8), save_path=None):
         """Plot comparison of database sizes"""
         if not self.scoring_results:
             print("No scoring results available.")
@@ -13,8 +13,8 @@ class DatabaseSizePlotMixin:
         sizes = []
         
         for db_name, results in self.scoring_results.items():
-            snap = results['snapshot']
-            sizes.append(snap.num_molecules)
+            scorer = results['scorer']
+            sizes.append(scorer.num_molecules)
         
         fig, ax = plotting.plt.subplots(figsize=figsize)
         
@@ -38,4 +38,3 @@ class DatabaseSizePlotMixin:
             save_path = os.path.join(self.distribution_dir, 'database_size_comparison.png')
         plotting.plt.savefig(save_path, dpi=500, bbox_inches='tight')
         plotting.plt.close()
-

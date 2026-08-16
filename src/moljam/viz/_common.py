@@ -10,5 +10,7 @@ from rdkit import Chem
 from rdkit.Chem import Draw, Descriptors, Lipinski
 from rdkit.rdBase import DisableLog
 
-# Side effects moved to MoleculeDBVisualizer.__init__()
+warnings.filterwarnings('ignore')
+DisableLog('rdApp.warning')
+DisableLog('rdApp.error')
 

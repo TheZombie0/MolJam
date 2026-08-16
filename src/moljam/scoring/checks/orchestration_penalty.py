@@ -1,9 +1,37 @@
-from ..._logging import get_logger
-
-logger = get_logger(__name__)
+from .._common import *
 
 
 class LowScorePenaltyMixin:
+    def _get_penalty_metrics(self):
+        metrics = {
+            "Structural Integrity": [
+                "Valid SMILES",
+                "Representation Consistency",
+                "Stereochemistry Completeness",
+            ],
+            "Data Quality": [
+                "Label Consistency",
+                "Data Consistency and Reliability",
+            ],
+            "Chemical Space Coverage": [
+                "Chemical Diversity",
+                "Drug-likeness",
+            ],
+            "Data Distribution": [
+                "Data Size",
+                "Data Balance and Distribution",
+            ],
+        }
+
+        if getattr(self, "experimental_info", False):
+            metrics["Experimental Information Quality"] = [
+                "Time Label Availability",
+                "Annotation Support Quality",
+                "Type Diversity",
+            ]
+
+        return metrics
+
     def apply_low_score_penalty(self):
         """
         Apply penalty to the final score if any individual metrics have very low scores.
@@ -13,27 +41,26 @@ class LowScorePenaltyMixin:
         individual_scores = []
         score_details = []
 
-        for category, metrics in self.scores.items():
-            if category in ["Total Score", "Normalized Score", "Final Adjusted Score"]:
-                continue
+        for category, metric_names in self._get_penalty_metrics().items():
+            category_scores = self.scores.get(category, {})
+            for metric in metric_names:
+                score = category_scores.get(metric)
+                if score is None or not isinstance(score, (int, float, np.number)):
+                    continue
 
-            if isinstance(metrics, dict):
-                for metric, score in metrics.items():
-                    if metric not in ["Total", "Normalized Total"] and score is not None:
-                        individual_scores.append(score)
-                        score_details.append({
-                            'category': category,
-                            'metric': metric,
-                            'score': score
-                        })
+                individual_scores.append(float(score))
+                score_details.append({
+                    'category': category,
+                    'metric': metric,
+                    'score': float(score)
+                })
 
         if not individual_scores:
             return 0, {}
 
-        pcfg = self.config.penalty
-        very_low_threshold = pcfg.very_low_threshold
-        low_threshold = pcfg.low_threshold
-        medium_threshold = pcfg.medium_threshold
+        very_low_threshold = 2.0
+        low_threshold = 4.0
+        medium_threshold = 6.0
 
         # Calculate per-metric penalty
         metric_penalties = {}
@@ -44,11 +71,11 @@ class LowScorePenaltyMixin:
 
             # Calculate individual metric penalty based on score range
             if score < very_low_threshold:
-                metric_penalty = pcfg.very_low_penalty
+                metric_penalty = 1.5  # Very low score penalty
             elif score < low_threshold:
-                metric_penalty = pcfg.low_penalty
+                metric_penalty = 0.5  # Low score penalty
             elif score < medium_threshold:
-                metric_penalty = pcfg.medium_penalty
+                metric_penalty = 0.1  # Medium score penalty
             else:
                 metric_penalty = 0.0  # No penalty
 
@@ -65,11 +92,11 @@ class LowScorePenaltyMixin:
         # Additional penalty if many metrics are below threshold
         below_threshold_ratio = (very_low_count + low_count + medium_count) / len(individual_scores)
         additional_penalty = 0
-        if below_threshold_ratio > pcfg.ratio_cutoff:
-            additional_penalty = (below_threshold_ratio - pcfg.ratio_cutoff) * pcfg.additional_multiplier
+        if below_threshold_ratio > 0.3:
+            additional_penalty = (below_threshold_ratio - 0.3) * 1.2
 
-        # Total penalty (capped)
-        total_penalty = min(base_penalty + additional_penalty, pcfg.total_cap)
+        # Total penalty (capped at 30)
+        total_penalty = min(base_penalty + additional_penalty, 30)
 
         # Distribute additional penalty proportionally to existing penalties
         if additional_penalty > 0 and base_penalty > 0:
@@ -78,8 +105,8 @@ class LowScorePenaltyMixin:
             for key in metric_penalties:
                 metric_penalties[key] *= penalty_scale
             # Apply cap to total
-            if sum(metric_penalties.values()) > pcfg.total_cap:
-                cap_scale = pcfg.total_cap / sum(metric_penalties.values())
+            if sum(metric_penalties.values()) > 30:
+                cap_scale = 30 / sum(metric_penalties.values())
                 for key in metric_penalties:
                     metric_penalties[key] *= cap_scale
 
@@ -88,9 +115,9 @@ class LowScorePenaltyMixin:
 
         self.analysis_results['Low Score Penalty'] = {
             'Total metrics evaluated': len(individual_scores),
-            f'Very low scores (< {very_low_threshold})': very_low_count,
-            f'Low scores ({very_low_threshold}-{low_threshold})': low_count,
-            f'Medium scores ({low_threshold}-{medium_threshold})': medium_count,
+            'Very low scores (< 2.0)': very_low_count,
+            'Low scores (2.0-4.0)': low_count,
+            'Medium scores (4.0-6.0)': medium_count,
             'Below threshold ratio': f"{below_threshold_ratio:.2%}",
             'Total penalty applied': f"{total_penalty:.2f}",
             'Metric penalties': metric_penalties,  # New: per-metric breakdown
@@ -104,4 +131,3 @@ class LowScorePenaltyMixin:
         }
 
         return total_penalty, metric_penalties
-

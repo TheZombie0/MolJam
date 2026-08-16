@@ -1,8 +1,97 @@
 from .._common import *
 from .. import plotting
+from ..structural_breakdowns import (
+    INVALID_SMILES_NORMALIZE_FILENAMES,
+    build_invalid_smiles_plot_table,
+    build_invalid_smiles_source_level_summaries,
+    empty_invalid_smiles_details_frame,
+    inspect_smiles_rows,
+    inspections_to_frame,
+    normalize_smiles_rows,
+    render_invalid_smiles_stacked_horizontal_figure,
+)
 
 
 class SmilesQualityPlotMixin:
+    def _build_invalid_smiles_error_breakdown_tables(self):
+        source_payloads = {}
+        detail_frames = []
+
+        for db_name, results in self.scoring_results.items():
+            scorer = results["scorer"]
+            if "validate_smiles" not in scorer.completed_checks:
+                scorer.validate_smiles()
+
+            filtered_rows, _, _ = normalize_smiles_rows(scorer.df, scorer.smiles_col)
+            invalid_indices = set(getattr(scorer, "invalid_indices", []))
+            invalid_rows = filtered_rows.loc[filtered_rows["row_index"].isin(invalid_indices), ["row_index", "smiles"]].copy()
+
+            if invalid_rows.empty:
+                details_df = empty_invalid_smiles_details_frame()
+            else:
+                details_df = inspections_to_frame(inspect_smiles_rows(invalid_rows))
+                details_df["source"] = db_name
+
+            source_payloads[db_name] = {
+                "total_count": int(len(filtered_rows)),
+                "details_df": details_df,
+            }
+            detail_frames.append(details_df)
+
+        source_level_df, per_source_category_df = build_invalid_smiles_source_level_summaries(
+            source_payloads
+        )
+        combined_details_df = (
+            pd.concat(detail_frames, ignore_index=True)
+            if detail_frames and any(not frame.empty for frame in detail_frames)
+            else empty_invalid_smiles_details_frame()
+        )
+        return combined_details_df, source_level_df, per_source_category_df
+
+    def plot_invalid_smiles_error_categories(
+        self,
+        normalize_by="invalid",
+        save_path=None,
+        save_svg_path=None,
+        title="Invalid SMILES error frequencies",
+        panel_label=None,
+    ):
+        """Plot RDKit-derived invalid SMILES error categories across databases."""
+        if not self.scoring_results:
+            print("No scoring results available.")
+            return
+
+        _, source_level_df, per_source_category_df = self._build_invalid_smiles_error_breakdown_tables()
+        plot_df = build_invalid_smiles_plot_table(
+            source_level_df=source_level_df,
+            per_source_category_df=per_source_category_df,
+            normalize_by=normalize_by,
+        )
+
+        if save_path is None:
+            save_path = os.path.join(
+                self.comparison_dir,
+                f"invalid_smiles_error_frequencies_{INVALID_SMILES_NORMALIZE_FILENAMES[normalize_by]}.png",
+            )
+
+        save_dir = os.path.dirname(save_path)
+        if save_dir:
+            os.makedirs(save_dir, exist_ok=True)
+        if save_svg_path:
+            save_svg_dir = os.path.dirname(save_svg_path)
+            if save_svg_dir:
+                os.makedirs(save_svg_dir, exist_ok=True)
+
+        render_invalid_smiles_stacked_horizontal_figure(
+            figure_png_path=save_path,
+            figure_svg_path=save_svg_path,
+            plot_df=plot_df,
+            normalize_by=normalize_by,
+            title=title,
+            panel_label=panel_label,
+        )
+        print(f"Saved invalid SMILES error categories plot to: {save_path}")
+
     def plot_invalid_smiles_comparison(self, mode='both', figsize=(14, 8), save_path=None):
         """
         Plot invalid SMILES count and ratio comparison (updated both mode)
@@ -16,11 +105,11 @@ class SmilesQualityPlotMixin:
         invalid_ratios = []
         
         for db_name, results in self.scoring_results.items():
-            snap = results['snapshot']
+            scorer = results['scorer']
             
-            if hasattr(snap, 'invalid_indices'):
-                invalid_count = len(snap.invalid_indices)
-                invalid_ratio = snap.invalid_rate
+            if hasattr(scorer, 'invalid_indices'):
+                invalid_count = len(scorer.invalid_indices)
+                invalid_ratio = scorer.invalid_rate
             else:
                 invalid_count = 0
                 invalid_ratio = 0
@@ -119,11 +208,11 @@ class SmilesQualityPlotMixin:
         non_canonical_ratios = []
         
         for db_name, results in self.scoring_results.items():
-            snap = results['snapshot']
+            scorer = results['scorer']
             
-            if hasattr(snap, 'non_canonical_indices'):
-                non_canonical_count = len(snap.non_canonical_indices)
-                non_canonical_ratio = snap.non_canonical_rate
+            if hasattr(scorer, 'non_canonical_indices'):
+                non_canonical_count = len(scorer.non_canonical_indices)
+                non_canonical_ratio = scorer.non_canonical_rate
             else:
                 non_canonical_count = 0
                 non_canonical_ratio = 0
@@ -206,4 +295,3 @@ class SmilesQualityPlotMixin:
             save_path = os.path.join(self.comparison_dir, f'non_standardized_smiles_{mode}.png')
         plotting.plt.savefig(save_path, dpi=500, bbox_inches='tight')
         plotting.plt.close()
-
