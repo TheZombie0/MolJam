@@ -11,7 +11,6 @@ The project focuses on one practical question: before a molecular dataset is use
 - Detailed Markdown report generation for each scored database.
 - Dataset cleaning based on detected quality issues.
 - Multi-database visualization for quality scores, structural issues, molecular properties, chemical space, label distribution, activity distribution, and runtime behavior.
-- Column classification utilities that combine keyword and statistical signals to identify useful annotation columns.
 
 ## Project Structure
 
